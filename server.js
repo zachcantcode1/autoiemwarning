@@ -293,6 +293,11 @@ async function monitorMesoscaleDiscussions() {
                 // Remove HTML tags for text
                 textContent = desc.replace(/<[^>]+>/g, '').trim();
             }
+            // If no image and no text, skip sending to webhook (prevents crash on empty/no active MDs)
+            if (!imageUrl && (!textContent || textContent.toLowerCase().includes('no mesoscale discussions are in effect'))) {
+                console.log(`Skipping MD ${guid}: no image or no valid text content.`);
+                continue;
+            }
             // Prepare form data for Discord webhook
             const form = new FormData();
             form.append('content', `**Mesoscale Discussion**\n${item.title[0]}\n\n${textContent}`);
