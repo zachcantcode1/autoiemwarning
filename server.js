@@ -301,7 +301,7 @@ async function monitorMesoscaleDiscussions() {
                 form.append('file', Buffer.from(imageResp.data, 'binary'), 'md.png');
             }
             await axios.post(
-                'https://hook.us2.make.com/encxha5954hndv65p98is9prvx53qtua',
+                'https://hook.us2.make.com/2lfo732u8mwrpaabjdesea44s8iccn0c',
                 form,
                 { headers: form.getHeaders() }
             );
