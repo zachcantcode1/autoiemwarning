@@ -3,6 +3,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 const FormData = require('form-data');
 const fs = require('fs');
+const xml2js = require('xml2js');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -10,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 // Store tornado warnings data
 let tornadoWarnings = [];
 let lastUpdate = null;
+let lastMdIds = new Set();
 
 // Middleware
 app.use(express.json());
@@ -266,6 +268,50 @@ async function monitorTornadoWarnings() {
     }
 }
 
+/**
+ * Monitor for mesoscale discussions
+ */
+async function monitorMesoscaleDiscussions() {
+    try {
+        const rssUrl = 'https://www.spc.noaa.gov/products/spcmdrss.xml';
+        const response = await axios.get(rssUrl);
+        const xml = response.data;
+        const parser = new xml2js.Parser();
+        const result = await parser.parseStringPromise(xml);
+        const items = result.rss.channel[0].item || [];
+        for (const item of items) {
+            const guid = item.guid[0]._ || item.link[0];
+            if (lastMdIds.has(guid)) continue;
+            lastMdIds.add(guid);
+            // Extract image URL from description
+            let imageUrl = null;
+            let textContent = '';
+            if (item.description && item.description[0]) {
+                const desc = item.description[0];
+                const imgMatch = desc.match(/<img src="([^"]+)"/);
+                if (imgMatch) imageUrl = imgMatch[1];
+                // Remove HTML tags for text
+                textContent = desc.replace(/<[^>]+>/g, '').trim();
+            }
+            // Prepare form data for Discord webhook
+            const form = new FormData();
+            form.append('content', `**Mesoscale Discussion**\n${item.title[0]}\n\n${textContent}`);
+            if (imageUrl) {
+                const imageResp = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                form.append('file', Buffer.from(imageResp.data, 'binary'), 'md.png');
+            }
+            await axios.post(
+                'https://hook.us2.make.com/encxha5954hndv65p98is9prvx53qtua',
+                form,
+                { headers: form.getHeaders() }
+            );
+            console.log(`Sent new MD ${guid} to Discord webhook.`);
+        }
+    } catch (err) {
+        console.error('Error monitoring mesoscale discussions:', err.message);
+    }
+}
+
 // Routes
 /**
  * Simulate historical tornado warnings as new and send to webhook
@@ -453,6 +499,7 @@ app.get('/', (req, res) => {
 
 // Schedule monitoring every 10 seconds
 cron.schedule('*/10 * * * * *', monitorTornadoWarnings);
+cron.schedule('*/10 * * * * *', monitorMesoscaleDiscussions);
 
 // Start server
 app.listen(PORT, () => {
